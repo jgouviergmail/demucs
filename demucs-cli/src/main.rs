@@ -14,12 +14,17 @@ use demucs_core::{num_chunks, Demucs, ModelOptions};
 
 use crate::progress::CliListener;
 
-#[cfg(not(feature = "cpu"))]
-use burn::backend::wgpu::{graphics::AutoGraphicsApi, init_setup, RuntimeOptions};
-#[cfg(not(feature = "cpu"))]
+#[cfg(feature = "cuda")]
+type B = burn::backend::cuda::Cuda;
+#[cfg(feature = "cuda")]
 use cubecl::config::{autotune::AutotuneConfig, cache::CacheConfig, GlobalConfig};
 
-#[cfg(not(feature = "cpu"))]
+#[cfg(all(not(feature = "cpu"), not(feature = "cuda")))]
+use burn::backend::wgpu::{graphics::AutoGraphicsApi, init_setup, RuntimeOptions};
+#[cfg(all(not(feature = "cpu"), not(feature = "cuda")))]
+use cubecl::config::{autotune::AutotuneConfig, cache::CacheConfig, GlobalConfig};
+
+#[cfg(all(not(feature = "cpu"), not(feature = "cuda")))]
 type B = burn::backend::wgpu::Wgpu;
 
 #[cfg(feature = "cpu")]
@@ -70,6 +75,17 @@ fn build_options(info: &ModelInfo, selected: &[StemId]) -> ModelOptions {
 }
 
 fn main() -> Result<()> {
+    // Spawn a thread with a large stack to avoid stack overflow during GPU
+    // shader compilation and deep model inference.
+    const STACK_SIZE: usize = 64 * 1024 * 1024; // 64 MB
+    let builder = std::thread::Builder::new().stack_size(STACK_SIZE);
+    let handler = builder
+        .spawn(run)
+        .expect("Failed to spawn main thread");
+    handler.join().unwrap()
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
 
     // 1. Resolve model info
@@ -139,7 +155,18 @@ fn main() -> Result<()> {
     eprintln!("Loading model...");
     let device = Default::default();
 
-    #[cfg(not(feature = "cpu"))]
+    #[cfg(feature = "cuda")]
+    {
+        GlobalConfig::set(GlobalConfig {
+            autotune: AutotuneConfig {
+                cache: CacheConfig::Global,
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+    }
+
+    #[cfg(all(not(feature = "cpu"), not(feature = "cuda")))]
     {
         GlobalConfig::set(GlobalConfig {
             autotune: AutotuneConfig {
@@ -160,7 +187,7 @@ fn main() -> Result<()> {
         Demucs::<B>::from_bytes(opts, &bytes, device).context("Failed to load model weights")?;
 
     // 5b. Warmup GPU shaders if autotune cache is empty (first run only)
-    #[cfg(not(feature = "cpu"))]
+    #[cfg(all(not(feature = "cpu"), not(feature = "cuda")))]
     {
         let cache_dir = CacheConfig::Global.root().join("autotune");
         let cached = cache_dir.is_dir()

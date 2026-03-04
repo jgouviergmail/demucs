@@ -1,26 +1,27 @@
 [package]
-name = "demucs-cli"
+name = "demucs-gui"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "demucs"
+name = "demucs-gui"
 path = "src/main.rs"
 
 [features]
 default = []
-cpu     = ["demucs-core/ndarray", "burn/ndarray"]
-cuda    = ["demucs-core/cuda", "burn/cuda"]
+cpu  = ["demucs-core/ndarray", "burn/ndarray"]
+cuda = ["demucs-core/cuda", "burn/cuda"]
 
 [dependencies]
 demucs-core = { path = "../demucs-core", features = ["wgpu", "autotune", "fusion"] }
 burn = { version = "0.20.1", features = ["wgpu", "autotune", "fusion"] }
 cubecl = { version = "0.9", default-features = false }
-clap = { version = "4", features = ["derive"] }
+eframe = "0.33"
+egui = "0.33"
+egui-file-dialog = "0.12"
 hound = "3"
 symphonia = { version = "0.5", features = ["mp3", "flac", "ogg", "wav", "pcm", "aac", "isomp4", "aiff"] }
 ureq = { version = "2", default-features = false, features = ["native-tls", "gzip"] }
-indicatif = "0.17"
 anyhow = "1"
 pollster = "0.4"
 

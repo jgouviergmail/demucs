@@ -13,3 +13,13 @@ demucs-plugin/ui-macos/.build/
 
 # IDE / tools
 .playwright-mcp/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Model cache
+*.mpk
+
+# Output
+stems/

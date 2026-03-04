@@ -1,207 +1,149 @@
-# demucs-rs
+# Demucs-RS
 
-[![CI](https://github.com/nikhilunni/demucs-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/nikhilunni/demucs-rs/actions/workflows/ci.yml)
-[![Release](https://github.com/nikhilunni/demucs-rs/actions/workflows/release.yml/badge.svg)](https://github.com/nikhilunni/demucs-rs/actions/workflows/release.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+Implémentation native Rust de [HTDemucs v4](https://arxiv.org/abs/2211.08553) — séparation de sources audio par intelligence artificielle. Sépare n'importe quel morceau en pistes individuelles (batterie, basse, voix, etc.) avec inférence GPU via [Burn](https://burn.dev).
 
-**[Try it in your browser](https://nikhilunni.github.io/demucs-rs/)**
+Basé sur le projet [demucs-rs](https://github.com/nikhilunni/demucs-rs) de Nikhil Unni, avec ajout d'une **interface graphique Windows**, du support **CUDA (RTX)** et du **trim des silences**.
 
-A native Rust implementation of [HTDemucs v4](https://arxiv.org/abs/2211.08553) — state-of-the-art music source separation. Splits any song into individual stems (drums, bass, vocals, etc.) using GPU-accelerated inference via [Burn](https://burn.dev).
+## Fonctionnalités
 
-Runs as a **native CLI** (Metal on macOS, Vulkan on Linux/Windows), entirely **in the browser** via WebAssembly + WebGPU, or as a **DAW plugin** (VST3/CLAP, macOS) — no server, no uploads, fully local.
+- **3 modèles** — Standard (4 stems), 6 Stems (+ guitare & piano), Fine-Tuned (meilleure qualité)
+- **Accélération GPU** — CUDA (NVIDIA RTX), Vulkan, Metal (macOS), WebGPU
+- **Interface graphique** — application Windows autonome (un seul .exe), drag-and-drop, progression en temps réel
+- **CLI native** — ligne de commande rapide avec barre de progression
+- **Trim des silences** — post-traitement optionnel pour supprimer les longs silences dans les vocals
+- **Formats audio** — WAV, MP3, FLAC, OGG, M4A/AAC, AIFF
 
-![Spectrogram view with model selection](screenshots/plugin-5.png)
+## Modèles
 
-## Listen
+| Modèle | Stems | Taille | Description |
+|--------|-------|--------|-------------|
+| `htdemucs` | batterie, basse, autre, voix | 84 Mo | Bon compromis vitesse/qualité |
+| `htdemucs_6s` | batterie, basse, autre, voix, guitare, piano | 84 Mo | Séparation étendue |
+| `htdemucs_ft` | batterie, basse, autre, voix | 333 Mo | Fine-tuned, meilleure qualité |
 
-[There Ain't Nothin'" by HoliznaCC0](https://freemusicarchive.org/music/holiznacc0/orphaned-media/there-aint-nothin) (CC0 — public domain), separated with the standard `htdemucs` model:
-| | |
-|---|---|
-| **Original mix** | <video src="https://github.com/user-attachments/assets/90bbbd1c-6235-413a-8dc3-600da5c2c62f" controls preload="none"></video> |
-| **Drums** | <video src="https://github.com/user-attachments/assets/665067b0-81ff-4711-b7f1-17578a0cda5e" controls preload="none"></video> |
-| **Bass** | <video src="https://github.com/user-attachments/assets/a16223a1-423f-4067-b242-37ce25fb01b4" controls preload="none"></video> |
-| **Vocals** | <video src="https://github.com/user-attachments/assets/4ceda21b-e04e-41ef-bbaa-833ce1d2081e" controls preload="none"></video> |
-| **Other** | <video src="https://github.com/user-attachments/assets/7897081a-cdb1-4a60-b6bb-018dc39b672a" controls preload="none"></video> |
+Les poids sont téléchargés automatiquement depuis Hugging Face à la première utilisation et mis en cache.
 
-## Features
+## Interface graphique (demucs-gui)
 
-- **Three model variants** — Standard (4-stem), 6-Stem (adds guitar & piano), and Fine-Tuned (best quality)
-- **GPU accelerated** — Metal, Vulkan, and WebGPU backends via Burn's wgpu support
-- **DAW plugin** — VST3/CLAP instrument plugin with native macOS UI, MIDI-gated stem playback, and per-stem aux outputs
-- **Browser app** — drag-and-drop web UI running 100% locally in your browser through WebAssembly
-- **Native CLI** — fast command-line inference with progress tracking
-- **Spectrogram visualization** — magma-colormap spectrograms with frequency axis labels
-- **Multi-track playback** — solo, mute, and download individual stems in the web UI
+Application Windows autonome avec interface egui. Aucune dépendance externe requise.
 
-## DAW Plugin
+### Fonctionnalités GUI
 
-The plugin runs as a VST3 or CLAP instrument in any DAW on macOS. Drop in an audio file, run separation, and play back individual stems — driven entirely by MIDI input.
+- **Drag-and-drop** ou sélection de fichier via dialogue natif
+- **Sélection du modèle** avec descriptions
+- **Choix des stems** à extraire (checkboxes dynamiques selon le modèle)
+- **Dossier de sortie** configurable (éditable + dialogue dossier)
+- **Trim des silences (vocals)** — paramétrable :
+  - Durée minimale de silence pour déclencher le trim (défaut : 2s)
+  - Durée du silence de remplacement (défaut : 0.5s)
+  - Seuil de détection du silence (défaut : -40 dB)
+- **Progression détaillée** — chunk, étape, pourcentage, temps écoulé
+- **Annulation** à tout moment
+- **Cache modèle** — pas de rechargement si même modèle
+- **Ouvrir le dossier** de sortie directement depuis l'interface
 
-> **Note:** The plugin is currently macOS-only (native SwiftUI UI with Metal GPU inference).
+### Compilation GUI
 
-**Drop an audio file, pick a model, and run separation:**
+```bash
+# Avec accélération CUDA (NVIDIA RTX)
+cargo build --release -p demucs-gui --features cuda
 
-![Audio loaded with model selection](screenshots/plugin-2.png)
+# Avec Vulkan (par défaut)
+cargo build --release -p demucs-gui
 
-**Per-stem mixer with spectrograms:**
+# CPU uniquement
+cargo build --release -p demucs-gui --features cpu
+```
 
-![Stems ready with mixer](screenshots/plugin-5.png)
+L'exécutable est dans `target/release/demucs-gui.exe`.
 
-**Drag stems directly into your DAW:**
+### Fichiers de sortie
 
-![Drag and drop stems into DAW](screenshots/plugin-drag-drop.gif)
-
-### How it works
-
-1. **Load audio** — drag a file from your DAW or Finder into the plugin (WAV, AIFF, MP3, FLAC)
-2. **Choose a model** and click **Run separation** — model weights are downloaded automatically on first use and cached for future runs
-3. **Play stems via MIDI** — any MIDI note triggers playback, releasing all notes stops it. Playback always starts from beat 0 in the DAW
-4. **Preview in the UI** — use the built-in transport to audition stems without MIDI
-
-### Mixer & routing
-
-- **Main output** is a stereo mix with per-stem gain sliders and solo buttons
-- **Solo** isolates a stem in the main mix — hold Cmd and click to solo multiple stems
-- **Aux outputs** provide the raw separated stems on dedicated stereo buses (Drums, Bass, Other, Vocals, Guitar, Piano), so you can route each stem to its own mixer channel in your DAW
-
-### Installation
-
-Download `Demucs.vst3` or `Demucs.clap` from the [latest release](https://github.com/nikhilunni/demucs-rs/releases) and copy to:
-
-- **VST3:** `~/Library/Audio/Plug-Ins/VST3/`
-- **CLAP:** `~/Library/Audio/Plug-Ins/CLAP/`
-
-## Web App
-
-The browser version compiles the full inference pipeline to WebAssembly and runs on your device using WebGPU. No audio is uploaded anywhere — everything stays local.
-
-> **Note:** The WebAssembly build is significantly slower than the native CLI due to WebGPU overhead and WASM constraints. For batch processing or long tracks, the CLI is recommended.
-
-**Drop an audio file:**
-
-![Drop zone](screenshots/01-dropzone.png)
-
-**Separation results with per-stem spectrograms:**
-
-![Stem results with solo/mute and download](screenshots/04-results.png)
-
-## Models
-
-| Model | Stems | Size | Description |
-|-------|-------|------|-------------|
-| `htdemucs` | drums, bass, other, vocals | 84 MB | Balanced speed and quality |
-| `htdemucs_6s` | drums, bass, other, vocals, guitar, piano | 84 MB | Adds guitar and piano separation |
-| `htdemucs_ft` | drums, bass, other, vocals | 333 MB | Fine-tuned — best quality, slower |
-
-Model weights are downloaded automatically from Hugging Face on first use (both CLI and web).
+Les fichiers WAV sont nommés `{source}_{stem}.wav` :
+- `chanson.mp3` → `chanson_drums.wav`, `chanson_bass.wav`, `chanson_vocals.wav`, `chanson_other.wav`
+- Avec trim activé : `chanson_vocals_trimmed.wav` (en plus de l'original)
 
 ## CLI
 
 ```
-Separate audio stems from a music file
-
 Usage: demucs [OPTIONS] <INPUT>
 
 Arguments:
-  <INPUT>  Input audio file (WAV, AIFF, FLAC, MP3, OGG, M4A/AAC — stereo or mono, any sample rate)
+  <INPUT>  Fichier audio (WAV, AIFF, FLAC, MP3, OGG, M4A/AAC)
 
 Options:
-  -m, --model <MODEL>    Model variant [default: htdemucs]
-                         [possible values: htdemucs, htdemucs_6s, htdemucs_ft]
-  -s, --stems <STEMS>    Stems to extract, comma-separated (e.g. "drums,vocals")
-                         Available: drums, bass, other, vocals, guitar, piano
-                         Default: all stems for the chosen model
-  -o, --output <OUTPUT>  Output directory [default: ./stems/]
-      --debug            Print layer-by-layer debug stats
-  -h, --help             Print help
+  -m, --model <MODEL>    Modèle [défaut: htdemucs]
+                         [valeurs: htdemucs, htdemucs_6s, htdemucs_ft]
+  -s, --stems <STEMS>    Stems à extraire, séparés par des virgules
+                         Disponibles: drums, bass, other, vocals, guitar, piano
+  -o, --output <OUTPUT>  Dossier de sortie [défaut: ./stems/]
+      --debug            Statistiques de debug par couche
+  -h, --help             Aide
 ```
 
-### Examples
+### Exemples CLI
 
 ```bash
-# Separate all 4 stems
-demucs song.mp3
+# Séparer toutes les pistes
+demucs chanson.mp3
 
-# Extract only vocals
-demucs song.mp3 -s vocals
+# Extraire uniquement les voix
+demucs chanson.mp3 -s vocals
 
-# Use the 6-stem model, output to a custom directory
-demucs song.flac -m htdemucs_6s -o ./my_stems/
+# Modèle 6 stems dans un dossier personnalisé
+demucs chanson.flac -m htdemucs_6s -o ./mes_pistes/
 
-# Best quality with the fine-tuned model
-demucs song.wav -m htdemucs_ft
+# Meilleure qualité avec le modèle fine-tuned
+demucs chanson.wav -m htdemucs_ft
 ```
 
-## Development Setup
-
-### Prerequisites
-
-- **Rust** (stable toolchain)
-- **wasm-pack** — `cargo install wasm-pack`
-- **Node.js** and **pnpm** — for the web frontend
-- A GPU with Metal (macOS), Vulkan (Linux/Windows), or WebGPU (browser) support
-
-### Building
+### Compilation CLI
 
 ```bash
-# Build the native CLI (release mode, auto-detects GPU backend)
-make cli
+# Avec CUDA
+cargo build --release -p demucs-cli --features cuda
 
-# Run the CLI directly
-cargo run -p demucs-cli --release -- song.mp3
+# Avec Vulkan (par défaut)
+cargo build --release -p demucs-cli
+
+# CPU uniquement
+cargo build --release -p demucs-cli --features cpu
 ```
 
-### Web App (local development)
+## Prérequis
 
-```bash
-# Dev server with debug WASM (fast compile, slower inference)
-make dev
+- **Rust** (toolchain stable)
+- **GPU** avec support Vulkan (Windows/Linux) ou Metal (macOS)
+- **CUDA Toolkit** (optionnel, pour l'accélération NVIDIA) — variable `CUDA_PATH` requise
 
-# Dev server with release WASM (slow compile, fast inference)
-make dev-release
+### Configuration CUDA (Windows)
 
-# Production build
-make web
+```powershell
+# Définir CUDA_PATH de manière permanente
+[System.Environment]::SetEnvironmentVariable('CUDA_PATH', 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x', 'User')
 ```
 
-### All Make Targets
+Redémarrer le terminal après cette commande.
 
-| Target | Description |
-|--------|-------------|
-| `make plugin` | Bundle VST3 + CLAP plugin (release) |
-| `make cli` | Build native CLI (release) |
-| `make wasm` | Build WASM (debug) |
-| `make wasm-release` | Build WASM (release, optimized) |
-| `make dev` | WASM debug + Vite dev server |
-| `make dev-release` | WASM release + Vite dev server |
-| `make web` | Full production web build |
-| `make clean` | Remove all build artifacts |
-
-### Running Tests
-
-```bash
-cargo test -p demucs-core
-```
-
-## Project Structure
+## Structure du projet
 
 ```
 demucs-rs/
-├── demucs-core/     Core ML inference library (model, DSP, weights)
-│                    Compiles to both native and wasm32-unknown-unknown
-├── demucs-cli/      Native CLI binary (clap, symphonia, indicatif)
-├── demucs-plugin/   DAW plugin — VST3/CLAP via nih-plug (macOS, SwiftUI editor)
-├── demucs-wasm/     Thin wasm-bindgen adapter over demucs-core
-├── web/             React + TypeScript frontend (Vite)
-└── bench/           Python benchmark & validation suite
+├── demucs-core/     Bibliothèque ML (modèle, DSP, poids)
+├── demucs-cli/      CLI native (clap, symphonia, indicatif)
+├── demucs-gui/      Interface graphique Windows (eframe/egui)
+├── demucs-plugin/   Plugin DAW — VST3/CLAP (macOS)
+├── demucs-wasm/     Adaptateur WebAssembly
+├── web/             Frontend React + TypeScript
+└── bench/           Benchmarks Python
 ```
 
-## Acknowledgments
+## Crédits
 
-- [Demucs](https://github.com/facebookresearch/demucs) by Meta Research — the original PyTorch implementation
-- [demucs.cpp](https://github.com/sevagh/demucs.cpp) — C++ reference that informed tensor shapes and computation order
-- [Burn](https://burn.dev) — the Rust deep learning framework powering inference
+- [demucs-rs](https://github.com/nikhilunni/demucs-rs) par Nikhil Unni — projet original
+- [Demucs](https://github.com/facebookresearch/demucs) par Meta Research — implémentation PyTorch originale
+- [Burn](https://burn.dev) — framework deep learning Rust
 
-## License
+## Licence
 
-Licensed under the [Apache License, Version 2.0](LICENSE).
+[Apache License, Version 2.0](LICENSE)
