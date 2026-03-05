@@ -12,7 +12,7 @@ use demucs_core::provider::ModelProvider;
 use demucs_core::{num_chunks, Demucs, ModelOptions};
 
 use crate::listener::GuiListener;
-use crate::state::{ModelChoice, TrimSettings, WorkerCommand, WorkerUpdate};
+use crate::state::{ModelChoice, StereoAudio, TrimSettings, WorkerCommand, WorkerUpdate};
 
 #[cfg(feature = "cuda")]
 type B = burn::backend::cuda::Cuda;
@@ -21,6 +21,7 @@ use cubecl::config::{autotune::AutotuneConfig, cache::CacheConfig, GlobalConfig}
 
 #[cfg(all(not(feature = "cpu"), not(feature = "cuda")))]
 use burn::backend::wgpu::{graphics::AutoGraphicsApi, init_setup, RuntimeOptions};
+use burn::tensor::backend::Backend;
 #[cfg(all(not(feature = "cpu"), not(feature = "cuda")))]
 use cubecl::config::{autotune::AutotuneConfig, cache::CacheConfig, GlobalConfig};
 
@@ -238,6 +239,9 @@ fn run_pipeline(
     let _ = tx.send(WorkerUpdate::AllDone {
         output_dir: abs_output.display().to_string(),
         stems: written_stems,
+        stem_audio: stems,
+        input_audio: StereoAudio { left, right },
+        sample_rate,
     });
 
     Ok(())

@@ -24,6 +24,7 @@ symphonia = { version = "0.5", features = ["mp3", "flac", "ogg", "wav", "pcm", "
 ureq = { version = "2", default-features = false, features = ["native-tls", "gzip"] }
 anyhow = "1"
 pollster = "0.4"
+rodio = { version = "0.20", default-features = false, features = ["wav"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 burn = { version = "0.20.1", features = ["metal"] }

@@ -1,6 +1,7 @@
-use egui::{Color32, RichText, Vec2};
+use egui::{RichText, Vec2};
 
 use crate::state::AppPhase;
+use crate::theme;
 
 pub fn render(
     ui: &mut egui::Ui,
@@ -26,7 +27,7 @@ pub fn render(
         ui.horizontal(|ui| {
             ui.label(RichText::new("Fichier :").strong());
             ui.label(input_name);
-            ui.label(RichText::new("\u{b7}").color(Color32::GRAY));
+            ui.label(RichText::new("\u{b7}").color(theme::TEXT_DIM));
             ui.label(RichText::new("Mod\u{e8}le :").strong());
             ui.label(model_label);
         });
@@ -38,7 +39,7 @@ pub fn render(
                 ui.label(
                     RichText::new(status)
                         .size(13.0)
-                        .color(Color32::from_gray(160)),
+                        .color(theme::TEXT_DIM),
                 );
                 ui.add_space(8.0);
                 ui.add(
@@ -61,7 +62,7 @@ pub fn render(
                 ui.label(
                     RichText::new(status)
                         .size(13.0)
-                        .color(Color32::from_gray(160)),
+                        .color(theme::TEXT_DIM),
                 );
                 ui.add_space(8.0);
                 ui.add(
@@ -82,7 +83,7 @@ pub fn render(
         ui.label(
             RichText::new(format!("Temps \u{e9}coul\u{e9} : {:02}:{:02}", secs / 60, secs % 60))
                 .size(13.0)
-                .color(Color32::from_gray(140)),
+                .color(theme::TEXT_DIM),
         );
 
         ui.add_space(20.0);

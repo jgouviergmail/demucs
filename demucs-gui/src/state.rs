@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use demucs_core::model::metadata::{StemId, HTDEMUCS, HTDEMUCS_6S, HTDEMUCS_FT, ModelInfo};
+use demucs_core::Stem;
 
 // ── Application phase (state machine) ───────────────────────────────────────
 
@@ -19,8 +20,7 @@ pub enum AppPhase {
     },
     WritingOutput,
     Done {
-        stems_written: Vec<String>,
-        output_dir: String,
+        result: SeparationResult,
         elapsed: std::time::Duration,
     },
     Error {
@@ -145,6 +145,21 @@ impl SetupState {
     }
 }
 
+// ── Separation result (audio kept in memory for review) ─────────────────────
+
+pub struct StereoAudio {
+    pub left: Vec<f32>,
+    pub right: Vec<f32>,
+}
+
+pub struct SeparationResult {
+    pub stems_written: Vec<String>,
+    pub output_dir: String,
+    pub stem_audio: Vec<Stem>,
+    pub input_audio: StereoAudio,
+    pub sample_rate: u32,
+}
+
 // ── Worker protocol ─────────────────────────────────────────────────────────
 
 pub enum WorkerCommand {
@@ -170,6 +185,12 @@ pub enum WorkerUpdate {
     SeparationDone,
     WritingStems,
     StemWritten { path: String },
-    AllDone { output_dir: String, stems: Vec<String> },
+    AllDone {
+        output_dir: String,
+        stems: Vec<String>,
+        stem_audio: Vec<Stem>,
+        input_audio: StereoAudio,
+        sample_rate: u32,
+    },
     Error { message: String },
 }

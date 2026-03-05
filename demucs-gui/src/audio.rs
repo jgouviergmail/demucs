@@ -134,6 +134,172 @@ pub fn write_wav(path: &Path, left: &[f32], right: &[f32], sample_rate: u32) -> 
     Ok(())
 }
 
+/// Per-stem mix parameters for export.
+pub struct StemMixParam {
+    pub muted: bool,
+    pub soloed: bool,
+    pub gain: f32,
+    pub gate_enabled: bool,
+    pub gate_threshold_db: f32,
+    pub pan: f32,
+    pub phase_invert: bool,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
+    pub reverb_send: f32,
+    pub delay_enabled: bool,
+    pub delay_send: f32,
+    pub delay_time_ms: f32,
+    pub delay_feedback: f32,
+    pub limiter_enabled: bool,
+}
+
+/// Global reverb parameters for export.
+pub struct ReverbParams {
+    pub decay: f32,
+    pub damping: f32,
+}
+
+/// Mix stems with full effects chain and write the result as a WAV file.
+///
+/// Processing order per stem (same as real-time mixer):
+/// gate → phase invert → EQ → gain (fader) → pan → delay → accumulate mix + reverb bus
+/// After all stems: reverb bus → add to mix → master gain → clamp
+pub fn export_mix(
+    path: &Path,
+    stems: &[demucs_core::Stem],
+    params: &[StemMixParam],
+    master_gain: f32,
+    sample_rate: u32,
+    reverb_params: &ReverbParams,
+) -> Result<()> {
+    use crate::dsp::{self, Freeverb, StemFxState};
+
+    if stems.is_empty() {
+        bail!("No stems to mix");
+    }
+
+    let n = stems[0].left.len();
+    let any_solo = params.iter().any(|p| p.soloed);
+
+    // Initialize per-stem DSP state
+    let mut fx_states: Vec<StemFxState> = params
+        .iter()
+        .map(|p| {
+            let mut fx = StemFxState::new(sample_rate);
+            if p.eq_enabled {
+                fx.maybe_update_eq(p.eq_low_db, p.eq_mid_db, p.eq_high_db, sample_rate);
+            }
+            fx
+        })
+        .collect();
+
+    let mut reverb = Freeverb::new(sample_rate);
+    reverb.set_params(reverb_params.decay, reverb_params.damping);
+
+    let mut mix_l = vec![0.0f32; n];
+    let mut mix_r = vec![0.0f32; n];
+
+    // Process frame by frame
+    for i in 0..n {
+        let mut frame_l = 0.0f32;
+        let mut frame_r = 0.0f32;
+        let mut reverb_bus_l = 0.0f32;
+        let mut reverb_bus_r = 0.0f32;
+
+        for (j, (stem, param)) in stems.iter().zip(params.iter()).enumerate() {
+            if param.muted {
+                continue;
+            }
+            if any_solo && !param.soloed {
+                continue;
+            }
+
+            if i >= stem.left.len() {
+                continue;
+            }
+
+            let mut l = stem.left[i];
+            let mut r = stem.right[i];
+
+            // 0. Noise gate
+            if param.gate_enabled {
+                let threshold_lin = fx_states[j].gate_threshold_linear(param.gate_threshold_db);
+                let (gl, gr) = fx_states[j].gate.process(l, r, threshold_lin);
+                l = gl;
+                r = gr;
+            }
+
+            // 1. Phase invert
+            if param.phase_invert {
+                l = -l;
+                r = -r;
+            }
+
+            // 2. EQ
+            if param.eq_enabled {
+                let (el, er) = fx_states[j].eq.process(l, r);
+                l = el;
+                r = er;
+            }
+
+            // 3. Gain (fader)
+            l *= param.gain;
+            r *= param.gain;
+
+            // 3b. Soft limiter
+            if param.limiter_enabled {
+                let (sl, sr_val) = dsp::soft_clip_stereo(l, r, 0.85);
+                l = sl;
+                r = sr_val;
+            }
+
+            // 4. Pan
+            let (pl, pr) = dsp::apply_pan(l, r, param.pan);
+            l = pl;
+            r = pr;
+
+            // 5. Delay
+            if param.delay_enabled {
+                let (dl, dr) = fx_states[j].delay.process(
+                    l,
+                    r,
+                    param.delay_send,
+                    param.delay_time_ms,
+                    param.delay_feedback,
+                );
+                l = dl;
+                r = dr;
+            }
+
+            // Accumulate mix
+            frame_l += l;
+            frame_r += r;
+
+            // 6. Reverb send
+            if param.reverb_send > 0.001 {
+                reverb_bus_l += l * param.reverb_send;
+                reverb_bus_r += r * param.reverb_send;
+            }
+        }
+
+        // Process reverb bus (always process to let the tail decay naturally)
+        let (rev_l, rev_r) = reverb.process(reverb_bus_l, reverb_bus_r);
+        frame_l += rev_l;
+        frame_r += rev_r;
+
+        // Master gain + soft clip (knee-based, transparent below 0.95)
+        frame_l *= master_gain;
+        frame_r *= master_gain;
+        let (cl, cr) = dsp::soft_clip_stereo(frame_l, frame_r, 0.95);
+        mix_l[i] = cl;
+        mix_r[i] = cr;
+    }
+
+    write_wav(path, &mix_l, &mix_r, sample_rate)
+}
+
 /// Trim long silences from a stereo audio signal.
 ///
 /// Detects regions where both channels stay below `threshold_db` for at least

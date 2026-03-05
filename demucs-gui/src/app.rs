@@ -5,8 +5,16 @@ use std::time::Instant;
 
 use egui_file_dialog::FileDialog;
 
-use crate::state::{AppPhase, SetupState, WorkerCommand, WorkerUpdate};
+use crate::playback::PlaybackEngine;
+use crate::spectrogram::SpectrogramManager;
+use crate::state::{AppPhase, SeparationResult, SetupState, WorkerCommand, WorkerUpdate};
 use crate::worker;
+
+struct ReviewState {
+    spectrograms: SpectrogramManager,
+    playback: Option<PlaybackEngine>,
+    export_status: String,
+}
 
 pub struct DemucsApp {
     phase: AppPhase,
@@ -15,12 +23,11 @@ pub struct DemucsApp {
     update_rx: mpsc::Receiver<WorkerUpdate>,
     cancel_flag: Arc<AtomicBool>,
     start_time: Option<Instant>,
-    // Preserved for "Nouvelle separation"
     last_input_name: String,
     last_model_label: String,
-    // File dialogs
     file_dialog: FileDialog,
     folder_dialog: FileDialog,
+    review: Option<ReviewState>,
 }
 
 impl DemucsApp {
@@ -42,6 +49,7 @@ impl DemucsApp {
             last_model_label: String::new(),
             file_dialog: FileDialog::new(),
             folder_dialog: FileDialog::new(),
+            review: None,
         }
     }
 
@@ -120,10 +128,36 @@ impl DemucsApp {
                     self.phase = AppPhase::WritingOutput;
                 }
                 WorkerUpdate::StemWritten { .. } => {}
-                WorkerUpdate::AllDone { output_dir, stems } => {
+                WorkerUpdate::AllDone {
+                    output_dir,
+                    stems,
+                    stem_audio,
+                    input_audio,
+                    sample_rate,
+                } => {
+                    // Create review state with spectrograms and playback
+                    let spectrograms = SpectrogramManager::new(
+                        &stem_audio,
+                        &input_audio.left,
+                        &input_audio.right,
+                        sample_rate,
+                    );
+                    let playback = PlaybackEngine::new(&stem_audio, sample_rate);
+
+                    self.review = Some(ReviewState {
+                        spectrograms,
+                        playback,
+                        export_status: String::new(),
+                    });
+
                     self.phase = AppPhase::Done {
-                        stems_written: stems,
-                        output_dir,
+                        result: SeparationResult {
+                            stems_written: stems,
+                            output_dir,
+                            stem_audio,
+                            input_audio,
+                            sample_rate,
+                        },
                         elapsed: self.elapsed(),
                     };
                 }
@@ -208,17 +242,28 @@ impl eframe::App for DemucsApp {
                         let _ = self.cmd_tx.send(WorkerCommand::Cancel);
                     }
                 }
-                AppPhase::Done {
-                    stems_written,
-                    output_dir,
-                    elapsed,
-                } => {
-                    let stems = stems_written.clone();
-                    let dir = output_dir.clone();
+                AppPhase::Done { result, elapsed } => {
+                    // We need to borrow result and review simultaneously
+                    // Use unsafe-free approach: extract what we need
                     let el = *elapsed;
                     let mut new_sep = false;
-                    crate::ui::result_panel::render(ui, &stems, &dir, el, &mut new_sep);
+
+                    // Temporarily take review to avoid borrow conflict
+                    if let Some(ref mut review) = self.review {
+                        let playback_ref = review.playback.as_ref();
+                        crate::ui::result_panel::render(
+                            ui,
+                            result,
+                            el,
+                            &mut review.spectrograms,
+                            playback_ref,
+                            &mut new_sep,
+                            &mut review.export_status,
+                        );
+                    }
+
                     if new_sep {
+                        self.review = None; // Drop playback + spectrograms
                         self.phase = AppPhase::Setup;
                     }
                 }
@@ -229,7 +274,7 @@ impl eframe::App for DemucsApp {
                         ui.heading(
                             egui::RichText::new("Erreur")
                                 .size(22.0)
-                                .color(egui::Color32::from_rgb(255, 100, 100)),
+                                .color(crate::theme::ERROR),
                         );
                         ui.add_space(16.0);
                         ui.label(&msg);
@@ -242,8 +287,27 @@ impl eframe::App for DemucsApp {
             }
         });
 
-        // Keep repainting while working
-        if !matches!(self.phase, AppPhase::Setup | AppPhase::Done { .. }) {
+        // Keep repainting while working or playing
+        let needs_repaint = match &self.phase {
+            AppPhase::Setup => false,
+            AppPhase::Done { .. } => {
+                let playing = self
+                    .review
+                    .as_ref()
+                    .and_then(|r| r.playback.as_ref())
+                    .map(|p| p.is_playing())
+                    .unwrap_or(false);
+                let loading = self
+                    .review
+                    .as_ref()
+                    .map(|r| !r.spectrograms.is_complete())
+                    .unwrap_or(false);
+                playing || loading
+            }
+            _ => true,
+        };
+
+        if needs_repaint {
             ctx.request_repaint();
         }
     }

@@ -4,6 +4,7 @@ use egui::{Color32, CornerRadius, RichText, Stroke, StrokeKind, Vec2};
 use egui_file_dialog::FileDialog;
 
 use crate::state::{ModelChoice, SetupState};
+use crate::theme;
 
 const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "ogg", "m4a", "aac", "aiff", "aif"];
 
@@ -16,11 +17,11 @@ pub fn render(
 ) {
     ui.vertical_centered(|ui| {
         ui.add_space(8.0);
-        ui.heading(RichText::new("DEMUCS").size(28.0).strong());
+        ui.heading(RichText::new("DEMUCS").size(28.0).strong().color(theme::ACCENT_CORAL));
         ui.label(
             RichText::new("S\u{e9}paration de sources audio")
                 .size(14.0)
-                .color(Color32::GRAY),
+                .color(theme::TEXT_DIM),
         );
         ui.add_space(16.0);
     });
@@ -34,12 +35,12 @@ pub fn render(
 
     let is_hovering = !ui.ctx().input(|i| i.raw.hovered_files.is_empty());
     let stroke_color = if is_hovering {
-        Color32::from_rgb(100, 180, 255)
+        theme::ACCENT_PURPLE
     } else {
-        Color32::from_gray(80)
+        theme::BORDER
     };
     let fill = if is_hovering {
-        Color32::from_rgba_premultiplied(100, 180, 255, 10)
+        Color32::from_rgba_premultiplied(0x7c, 0x6f, 0xf0, 10)
     } else {
         Color32::TRANSPARENT
     };
@@ -57,14 +58,14 @@ pub fn render(
         egui::Align2::CENTER_CENTER,
         "Glissez un fichier audio ici\nou cliquez pour parcourir",
         egui::FontId::proportional(15.0),
-        Color32::from_gray(160),
+        theme::TEXT_DIM,
     );
     ui.painter().text(
         rect.center() + Vec2::new(0.0, 20.0),
         egui::Align2::CENTER_CENTER,
         "WAV \u{b7} MP3 \u{b7} FLAC \u{b7} OGG \u{b7} M4A \u{b7} AIFF",
         egui::FontId::proportional(11.0),
-        Color32::from_gray(100),
+        theme::BORDER,
     );
 
     if response.clicked() {
@@ -106,7 +107,7 @@ pub fn render(
             ui.label(
                 RichText::new(choice.description())
                     .size(12.0)
-                    .color(Color32::GRAY),
+                    .color(theme::TEXT_DIM),
             );
         });
     }
